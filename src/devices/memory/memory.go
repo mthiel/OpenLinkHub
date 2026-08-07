@@ -64,6 +64,9 @@ type Devices struct {
 	HasSpeed           bool
 	ContainsPump       bool
 	IsTemperatureProbe bool
+	Protocol           string `json:"protocol"`
+	EneAddress         byte   `json:"-"`
+	EneDirectRegister  uint16 `json:"-"`
 }
 
 // DeviceProfile struct contains all device profile
@@ -322,6 +325,13 @@ func (d *Device) Stop() {
 	sort.Ints(keys)
 	if lightChannels > 0 {
 		for _, k := range keys {
+			if d.Devices[k].Protocol == protocolEne {
+				// Release host control so the module's own internal
+				// effect engine (the on-board default rainbow) takes
+				// back over, rather than leaving it latched black.
+				d.eneSetDirect(d.Devices[k].EneAddress, false)
+				continue
+			}
 			static := map[int][]byte{}
 			for i := 0; i < int(d.Devices[k].LedChannels); i++ {
 				static[i] = []byte{0, 0, 0}
@@ -338,6 +348,30 @@ func (d *Device) Stop() {
 	}
 
 	logger.Log(logger.Fields{"serial": d.Serial, "product": d.Product}).Info("Device stopped")
+}
+
+// getSpdHwmonTemperatureFile finds the hwmon temp1_input file for the exact
+// i2c client "<bus>-00XX" that owns spdAddress. Unlike getHwMonTemperatureFile
+// (which fuzzy-matches a decimal counter against sysfs entry names), this
+// builds the exact client name directly, since callers here already know
+// the real SMBus address to look for.
+func (d *Device) getSpdHwmonTemperatureFile(spdAddress byte, driver string) string {
+	clientName := fmt.Sprintf("%d-%04x", d.getI2cSensor(), spdAddress)
+	devicePath := filepath.Join(basePath, driver, clientName)
+
+	data, err := os.ReadFile(filepath.Join(devicePath, "name"))
+	if err != nil || strings.TrimSpace(string(data)) != driver {
+		return ""
+	}
+
+	hwmonFolders, _ := filepath.Glob(filepath.Join(devicePath, "hwmon", "hwmon*"))
+	for _, hwmonFolder := range hwmonFolders {
+		temps, _ := filepath.Glob(filepath.Join(hwmonFolder, "temp*_input"))
+		if len(temps) > 0 {
+			return temps[0]
+		}
+	}
+	return ""
 }
 
 // getHwMonTemperatureFile will get hwmon
@@ -785,6 +819,70 @@ func (d *Device) getDevices() int {
 		}
 	}
 
+	// ENE-protocol DRAM RGB controllers (ADATA XPG, TeamGroup, and other
+	// vendors licensing the same ASUS Aura-compatible reference design).
+	// These live on a completely different SMBus address range and speak
+	// a different wire protocol than Corsair modules, so they're detected
+	// separately and appended, starting right after the Corsair channel
+	// range (0..maximumRegisters-1) rather than len(devices), since the
+	// Corsair loop above indexes by physical slot position and can be
+	// sparse -- len(devices) would collide with an already-used key if
+	// only the higher-numbered Corsair slots were populated.
+	if d.RuntimeMemoryType == 5 {
+		for eneIndex, em := range detectEneModules(d.dev.File) {
+			i := maximumRegisters + eneIndex
+
+			label := "Set Label"
+			if d.DeviceProfile != nil {
+				if lb, ok := d.DeviceProfile.Labels[i]; ok && len(lb) > 0 {
+					label = lb
+				}
+			}
+
+			rgbProfile := "static"
+			if d.DeviceProfile != nil {
+				if rp, ok := d.DeviceProfile.RGBProfiles[i]; ok && d.GetRgbProfile(rp) != nil {
+					rgbProfile = rp
+				}
+			}
+
+			device := &Devices{
+				ChannelId:         i,
+				DeviceId:          i,
+				Sku:               em.Version,
+				MemoryType:        d.RuntimeMemoryType,
+				LedChannels:       uint8(em.LedCount),
+				Name:              "ENE DRAM",
+				Label:             label,
+				RGB:               rgbProfile,
+				Protocol:          protocolEne,
+				EneAddress:        em.Address,
+				EneDirectRegister: em.DirectReg,
+			}
+
+			if config.GetConfig().RamTempViaHwmon {
+				spdAddress := em.Address - eneToSpdAddressOffset
+				hwmonTemperatureFile := d.getSpdHwmonTemperatureFile(spdAddress, "spd5118")
+				if len(hwmonTemperatureFile) > 0 {
+					device.HwmonPath = hwmonTemperatureFile
+					hwmonTemp, err := d.getTemperature(hwmonTemperatureFile)
+					if err == nil {
+						device.Temperature = hwmonTemp
+						device.TemperatureString = dashboard.GetDashboard().TemperatureToString(hwmonTemp)
+						device.HasTemps = true
+					}
+				}
+			}
+
+			if len(d.SkuLine) < 1 {
+				d.SkuLine = device.Name
+			}
+
+			devices[i] = device
+			d.LEDChannels += em.LedCount
+		}
+	}
+
 	d.Devices = devices
 	return len(devices)
 }
@@ -1201,12 +1299,17 @@ func (d *Device) setDeviceColor() {
 
 	// Reset
 	for _, k := range keys {
+		if d.Devices[k].Protocol == protocolEne {
+			// Take host control before pushing colors, otherwise the
+			// module's internal effect engine keeps driving the LEDs.
+			d.eneSetDirect(d.Devices[k].EneAddress, true)
+		}
 		static := map[int][]byte{}
 		for i := 0; i < int(d.Devices[k].LedChannels); i++ {
 			static[i] = []byte{byte(0), byte(0), byte(0)}
 		}
 		buffer = rgb.SetColor(static)
-		d.transfer(buffer, colorAddresses[k], d.Devices[k].LedChannels, d.Devices[k].ColorRegister)
+		d.writeDeviceColor(k, buffer)
 		time.Sleep(5 * time.Millisecond)
 	}
 
@@ -1264,7 +1367,7 @@ func (d *Device) setDeviceColor() {
 				}
 			}
 			buffer = rgb.SetColor(static)
-			d.transfer(buffer, colorAddresses[k], d.Devices[k].LedChannels, d.Devices[k].ColorRegister)
+			d.writeDeviceColor(k, buffer)
 			time.Sleep(10 * time.Millisecond)
 		}
 		return
@@ -1503,7 +1606,7 @@ func (d *Device) writeColor(data []byte, deviceId int) {
 	if d.DeviceProfile.OpenRGBIntegration {
 		return
 	}
-	d.transfer(data, colorAddresses[deviceId], d.Devices[deviceId].LedChannels, d.Devices[deviceId].ColorRegister)
+	d.writeDeviceColor(deviceId, data)
 }
 
 // writeColorEx will write data to the device from OpenRGB client
@@ -1591,8 +1694,7 @@ func (d *Device) startQueueWorker() {
 
 			for _, channelId := range keys {
 				data := packetMap[channelId]
-				d.transfer(data, colorAddresses[channelId], d.Devices[channelId].LedChannels, d.Devices[channelId].ColorRegister)
-				_ = channelId
+				d.writeDeviceColor(channelId, data)
 			}
 			d.deviceLock.Unlock()
 		}
@@ -2239,4 +2341,18 @@ func (d *Device) transfer(buffer []byte, address, ledDevices byte, colorRegister
 		}
 	}
 	return 0
+}
+
+// writeDeviceColor writes a color buffer to the given channel, dispatching
+// to whichever wire protocol that channel's device actually speaks.
+func (d *Device) writeDeviceColor(channelId int, buffer []byte) {
+	device, ok := d.Devices[channelId]
+	if !ok {
+		return
+	}
+	if device.Protocol == protocolEne {
+		d.transferEne(device, buffer)
+		return
+	}
+	d.transfer(buffer, colorAddresses[channelId], device.LedChannels, device.ColorRegister)
 }

@@ -108,15 +108,10 @@ func Open(device string) (*Connection, error) {
 	return &Connection{File: f}, nil
 }
 
-// WriteBlockData will write a byte array to register
-func WriteBlockData(f *os.File, address, register uint8, buf []byte) error {
+// writeBlockDataRaw performs an SMBus block write with no caching.
+func writeBlockDataRaw(f *os.File, address, register uint8, buf []byte) error {
 	if len(buf) > int(i2csmBusMax) {
 		return errors.New("buffer is too long for this type")
-	}
-
-	k := cacheKey{addr: address, reg: register}
-	if prev, ok := cacheData[k]; ok && bytes.Equal(prev, buf) {
-		return nil
 	}
 
 	if err := ioctl(f.Fd(), i2cSlave, uintptr(address)); err != nil {
@@ -134,13 +129,36 @@ func WriteBlockData(f *os.File, address, register uint8, buf []byte) error {
 		pointer: unsafe.Pointer(&data[0]),
 	}
 	ptr := unsafe.Pointer(&cmd)
-	err := ioctl(f.Fd(), i2cSmbus, uintptr(ptr))
-	if err == nil {
-		cp := make([]byte, len(buf))
-		copy(cp, buf)
-		cacheData[k] = cp
+	return ioctl(f.Fd(), i2cSmbus, uintptr(ptr))
+}
+
+// WriteBlockData will write a byte array to register, skipping the transfer
+// if it's identical to the last value written to this address+register.
+// This assumes the register genuinely identifies a fixed destination
+// (true for Corsair memory/cooler devices).
+func WriteBlockData(f *os.File, address, register uint8, buf []byte) error {
+	k := cacheKey{addr: address, reg: register}
+	if prev, ok := cacheData[k]; ok && bytes.Equal(prev, buf) {
+		return nil
 	}
-	return err
+
+	if err := writeBlockDataRaw(f, address, register, buf); err != nil {
+		return err
+	}
+
+	cp := make([]byte, len(buf))
+	copy(cp, buf)
+	cacheData[k] = cp
+	return nil
+}
+
+// WriteBlockDataUncached is WriteBlockData without the dedup cache. Needed
+// for protocols where the command byte is a generic "write to whichever
+// register was just selected via a separate pointer write" channel rather
+// than a fixed destination (e.g. ENE DRAM RGB controllers, which always
+// block-write through command 0x03 regardless of the target LED).
+func WriteBlockDataUncached(f *os.File, address, register uint8, buf []byte) error {
+	return writeBlockDataRaw(f, address, register, buf)
 }
 
 // ReadRegister will read byte from a register
@@ -176,4 +194,34 @@ func ReadWord(f *os.File, addr, reg uint8) (uint16, error) {
 	ptr := unsafe.Pointer(&cmd)
 	err := ioctl(f.Fd(), i2cSmbus, uintptr(ptr))
 	return v, err
+}
+
+// WriteWordData writes a 2-byte word to a register.
+func WriteWordData(f *os.File, address, register uint8, value uint16) error {
+	if err := ioctl(f.Fd(), i2cSlave, uintptr(address)); err != nil {
+		return err
+	}
+	cmd := i2cCommand{
+		mode:    i2cWrite,
+		command: register,
+		length:  i2cWordData,
+		pointer: unsafe.Pointer(&value),
+	}
+	ptr := unsafe.Pointer(&cmd)
+	return ioctl(f.Fd(), i2cSmbus, uintptr(ptr))
+}
+
+// WriteByteData writes a single byte to a register.
+func WriteByteData(f *os.File, address, register, value uint8) error {
+	if err := ioctl(f.Fd(), i2cSlave, uintptr(address)); err != nil {
+		return err
+	}
+	cmd := i2cCommand{
+		mode:    i2cWrite,
+		command: register,
+		length:  i2cByteData,
+		pointer: unsafe.Pointer(&value),
+	}
+	ptr := unsafe.Pointer(&cmd)
+	return ioctl(f.Fd(), i2cSmbus, uintptr(ptr))
 }
