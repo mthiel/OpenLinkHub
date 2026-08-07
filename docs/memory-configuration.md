@@ -91,3 +91,52 @@ If you are running it in user mode:
 ```bash
 systemctl restart --user OpenLinkHub.service
 ```
+
+## Third-party DDR5 RGB memory (ADATA XPG, TeamGroup, ...)
+
+Some third-party DDR5 RGB modules don't use Corsair's protocol at all. Instead
+they use an ENE-designed RGB DRAM controller -- the same reference design ASUS
+licenses for Aura Sync -- which several memory vendors ship under their own
+branding. This has been validated against:
+
+- ADATA XPG Lancer RGB DDR5
+- TeamGroup T-Force Delta RGB DDR5
+
+Both report the ENE device identity string `AUDA0-E6K5-0101`, which suggests
+other vendors reselling the same off-the-shelf controller (e.g. Geil Super
+Luce) are also likely to work, though only the two above have been confirmed.
+
+### Setup
+
+No separate configuration is needed beyond what's already described above.
+Set `memory`, `memorySmBus`, and `memoryType: 5` the same way as for Corsair
+memory, and set the udev permissions for that `smbus` device. `memorySku` and
+`decodeMemorySku` are Corsair-specific and can be left at their defaults --
+ENE modules are detected independently by probing a fixed SMBus address pool
+(`0x70`-`0x76`, `0x4F`, `0x66`-`0x67`, `0x39`-`0x3D`) and verifying each
+candidate address against the controller's own self-test signature.
+Corsair and ENE-protocol modules can coexist in the same system; each is
+detected and driven independently.
+
+Once detected, ENE modules show up in the dashboard like any other memory
+device and support the full existing RGB profile/effect set, since colors
+are pushed to them the same way as Corsair modules -- one live frame at a
+time -- rather than through the controller's own on-board effects.
+
+### Known limitations
+
+- **DDR5 only.** DDR4 ENE-protocol modules use a different address/protocol
+  generation and are not currently supported.
+- **Modules must already be individually addressed.** Some platforms require
+  a one-time SMBus negotiation (writing a slot index and target address to a
+  shared address, `0x77`) before each module answers on its own address in
+  the pool above. That negotiation sequence is not implemented -- only
+  modules the BIOS/EC has already assigned a unique address to (verifiable
+  with `i2cdetect`) will be found. This was not needed on the hardware it
+  was validated against.
+- **Per-DIMM temperature reporting assumes a fixed address offset** (`0x20`)
+  between a module's ENE lighting controller and its own SPD hub, e.g. the
+  ENE controller at `0x70` is assumed to belong to the same DIMM as the SPD
+  hub at `0x50`. This held true on the validated hardware but hasn't been
+  confirmed on a system where the two address ranges might not line up
+  slot-for-slot.
