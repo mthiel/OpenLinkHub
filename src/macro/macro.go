@@ -50,6 +50,11 @@ var (
 
 // Init will load all available macro profiles
 func Init() {
+	if !config.GetConfig().EnableInputManager {
+		logger.Log(logger.Fields{}).Info("Input manager is disabled, skipping macro profile loading")
+		return
+	}
+
 	pwd = config.GetConfig().ConfigPath
 	location = pwd + "/database/macros/"
 

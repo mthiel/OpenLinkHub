@@ -713,6 +713,11 @@ var shiftedToBase = map[rune]rune{
 
 // Init will fetch an input device
 func Init() {
+	if !config.GetConfig().EnableInputManager {
+		logger.Log(logger.Fields{}).Info("Input manager is disabled, skipping virtual keyboard and mouse creation")
+		return
+	}
+
 	screenWidth = int32(display.GetScreenResolution().Width)
 	screenHeight = int32(display.GetScreenResolution().Height)
 	buildInputActions()

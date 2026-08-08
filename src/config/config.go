@@ -43,6 +43,7 @@ type Configuration struct {
 	OpenRGBPort               int      `json:"openRGBPort"`
 	EnableOpenRGBTargetServer bool     `json:"enableOpenRGBTargetServer"`
 	EnableGamepad             bool     `json:"enableGamepad"`
+	EnableInputManager        bool     `json:"enableInputManager"`
 	EnableMotherboard         bool     `json:"enableMotherboard"`
 	MotherboardBiosOnExit     bool     `json:"motherboardBiosOnExit"`
 	MemoryRegisterOverride    []byte   `json:"memoryRegisterOverride"`
@@ -69,6 +70,7 @@ var (
 		"openRGBPort":               6743,
 		"enableOpenRGBTargetServer": false,
 		"enableGamepad":             true,
+		"enableInputManager":        true,
 		"enableMotherboard":         false,
 		"motherboardBiosOnExit":     false,
 		"memoryRegisterOverride":    make([]byte, 0),
@@ -164,6 +166,7 @@ func upgradeFile(cfg string) {
 			OpenRGBPort:               6743,
 			EnableOpenRGBTargetServer: false,
 			EnableGamepad:             true,
+			EnableInputManager:        true,
 			EnableMotherboard:         false,
 			MotherboardBiosOnExit:     false,
 			MemoryRegisterOverride:    make([]byte, 0),
