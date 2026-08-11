@@ -326,10 +326,16 @@ func (d *Device) Stop() {
 	if lightChannels > 0 {
 		for _, k := range keys {
 			if d.Devices[k].Protocol == protocolEne {
-				// Release host control so the module's own internal
-				// effect engine (the on-board default rainbow) takes
-				// back over, rather than leaving it latched black.
-				d.eneSetDirect(d.Devices[k].EneAddress, false)
+				// Keep host control and latch the LEDs to black, matching
+				// the Corsair path. Releasing host control would hand
+				// lighting back to the module's internal effect engine
+				// (the on-board default rainbow) instead.
+				d.eneSetDirect(d.Devices[k].EneAddress)
+				static := map[int][]byte{}
+				for i := 0; i < int(d.Devices[k].LedChannels); i++ {
+					static[i] = []byte{0, 0, 0}
+				}
+				d.writeDeviceColor(k, rgb.SetColor(static))
 				continue
 			}
 			static := map[int][]byte{}
@@ -1306,7 +1312,7 @@ func (d *Device) setDeviceColor() {
 		if d.Devices[k].Protocol == protocolEne {
 			// Take host control before pushing colors, otherwise the
 			// module's internal effect engine keeps driving the LEDs.
-			d.eneSetDirect(d.Devices[k].EneAddress, true)
+			d.eneSetDirect(d.Devices[k].EneAddress)
 		}
 		static := map[int][]byte{}
 		for i := 0; i < int(d.Devices[k].LedChannels); i++ {

@@ -206,23 +206,18 @@ func (d *Device) transferEne(device *Devices, buffer []byte) {
 	}
 }
 
-// eneSetDirect enables or releases host (direct) control of an ENE DRAM
-// RGB controller. Releasing it hands lighting back to the module's
-// internal effect engine, which is what produces the on-board default
-// rainbow behavior these modules ship with. Locks d.mutex itself, matching
-// transfer()/transferEne()'s self-locking discipline, since this is a
-// stateful pointer-then-value sequence that must not interleave with any
-// other I2C transaction on the same bus handle.
-func (d *Device) eneSetDirect(addr byte, enabled bool) {
+// eneSetDirect takes host (direct) control of an ENE DRAM RGB controller,
+// overriding the module's internal effect engine so pushed colors are what
+// the LEDs show. Locks d.mutex itself, matching transfer()/transferEne()'s
+// self-locking discipline, since this is a stateful pointer-then-value
+// sequence that must not interleave with any other I2C transaction on the
+// same bus handle.
+func (d *Device) eneSetDirect(addr byte) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	var val byte
-	if enabled {
-		val = 1
-	}
 	f := d.dev.File
-	if err := eneWriteByte(f, addr, eneRegDirect, val); err != nil {
+	if err := eneWriteByte(f, addr, eneRegDirect, 1); err != nil {
 		logger.Log(logger.Fields{"error": err, "address": addr}).Warn("Unable to set ENE direct mode")
 	}
 	if err := eneWriteByte(f, addr, eneRegApply, eneApplyVal); err != nil {

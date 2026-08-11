@@ -96,15 +96,20 @@ hardware.
 
 ## 3. Low — `Stop()` leaves ENE modules on the internal rainbow while Corsair modules are left black
 
-**Status: ACCEPTED** — intentional, documented behavior; no change planned.
+**Status: RESOLVED** — ENE modules are now latched black on `Stop()`,
+matching the Corsair path.
 
-- `src/devices/memory/memory.go:326-342`
+- `src/devices/memory/memory.go:328-343`
 
-ENE modules are released to host-off, returning them to their boot rainbow,
-whereas Corsair modules are explicitly driven black. This is intentional
-per the code comment and docs, but it is an inconsistency in what the RAM
-looks like when the daemon is down, noticeable to users with mixed
-Corsair + ENE modules.
+The original code released ENE modules to host-off, returning them to their
+boot rainbow, whereas Corsair modules were explicitly driven black — an
+inconsistency in what the RAM looks like when the daemon is down, noticeable
+to users with mixed Corsair + ENE modules.
+
+**Fix:** `Stop()` now keeps host control and pushes an all-black frame via
+`writeDeviceColor` (dispatching to `transferEne`) instead of releasing.
+`eneSetDirect` no longer takes an `enabled` parameter — it always takes host
+control, its former release path being dead code.
 
 ---
 
@@ -143,7 +148,7 @@ but there is no verification.
 ## Summary
 
 Finding #1 (the only one with real user-visible impact) is fixed and
-cleanup-reviewed on `bugfix/ene-memory-support-fixes-cr1`. #3 was accepted
-as intentional. #2 is fixed with the hardening comment. #4 and #5 remain
-open as informational notes with no user-visible impact on the validated
-hardware.
+cleanup-reviewed on `bugfix/ene-memory-support-fixes-cr1`. #2 and #3 are
+fixed with the hardening comment and the `Stop()` black-latch change
+respectively. #4 and #5 remain open as informational notes with no
+user-visible impact on the validated hardware.
