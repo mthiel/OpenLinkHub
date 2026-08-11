@@ -115,8 +115,9 @@ control, since the former release path was removed as part of this change.
 
 ## 4. Low — `eneReadString` terminates only on NUL
 
-**Status: OPEN** — informational; not observed on validated hardware and
-OpenRGB shares the limitation.
+**Status: DOCUMENTED** — noted in the "Known limitations" section of
+`docs/memory-configuration.md`; no code change. Not observed on validated
+hardware and OpenRGB shares the limitation.
 
 - `src/devices/memory/ene.go:123-127`
 
@@ -133,8 +134,9 @@ limitation. Informational.
 
 ## 5. Low — `getSpdHwmonTemperatureFile` returns the first `temp*_input` from the glob
 
-**Status: OPEN** — no code change; harmless if `temp1` is always the DIMM
-temp.
+**Status: DOCUMENTED** — noted in the "Known limitations" section of
+`docs/memory-configuration.md`; no code change. Harmless if `temp1` is
+always the DIMM temp.
 
 - `src/devices/memory/memory.go:367-373`
 
@@ -150,5 +152,5 @@ but there is no verification.
 Finding #1 (the only one with real user-visible impact) is fixed and
 cleanup-reviewed on `bugfix/ene-memory-support-fixes-cr1`. #2 and #3 are
 fixed with the hardening comment and the `Stop()` black-latch change
-respectively. #4 and #5 remain open as informational notes with no
-user-visible impact on the validated hardware.
+respectively. #4 and #5 are documented in the "Known limitations" section
+of `docs/memory-configuration.md`; no code changes were needed for them.

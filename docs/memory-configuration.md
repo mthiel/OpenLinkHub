@@ -140,3 +140,15 @@ time -- rather than through the controller's own on-board effects.
   hub at `0x50`. This held true on the validated hardware but hasn't been
   confirmed on a system where the two address ranges might not line up
   slot-for-slot.
+- **Device identity string is read NUL-terminated.** The 16-byte
+  device-name field is read up to the first NUL. A module that pads the
+  field with `0xFF` instead of `0x00` would yield a garbage version string,
+  and the controller would silently fall back to the first-generation
+  direct register (`0x8000`) instead of the V2 register (`0x8100`), pushing
+  colors to the wrong addresses. Not observed on the validated hardware;
+  OpenRGB shares the same limitation.
+- **Per-DIMM temperature picks the first `temp*_input` from sysfs.** If the
+  `spd5118` driver exposes more than one temperature input for a module's
+  hwmon client, the alphabetically-first file (typically `temp1_input`) is
+  used without verifying it is the module's own sensor. Harmless as long as
+  `temp1` is always the DIMM temperature.
