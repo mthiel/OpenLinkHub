@@ -11,23 +11,27 @@ No definite crashes or deadlocks found. Mutex discipline, `transferEne`
 bounds checking, `Stop()` ordering, and the `WriteWordData` /
 `WriteByteData` ioctl struct layouts all check out.
 
-Findings are listed in descending severity.
+Findings are listed in descending severity; each carries its current
+status. Follow-up fixes live on `bugfix/ene-memory-support-fixes-cr1`.
 
 ---
 
 ## 1. Medium — Channel indices are detection-order-based; persisted profile data can drift across DIMMs
 
-`getDevices` assigns each ENE module a channel id derived from its position
+**Status: RESOLVED** (`6b896896` on `feature/ene-memory-support`; CR1
+cleanup `0da712cc` on `bugfix/ene-memory-support-fixes-cr1`).
+
+`getDevices` assigned each ENE module a channel id derived from its position
 in the detection result:
 
-- `src/devices/memory/memory.go:832-833`
+- `src/devices/memory/memory.go:832-833` (original)
 
 ```go
 for eneIndex, em := range detectEneModules(d.dev.File) {
     i := maximumRegisters + eneIndex
 ```
 
-A module's channel id therefore depends on how many ENE controllers are
+A module's channel id therefore depended on how many ENE controllers were
 detected on a given boot. Labels, RGB profiles, and per-LED overrides are
 persisted keyed by channel id. If the detected module population changes
 (a DIMM is removed, reseated, or one module fails its self-test and drops
@@ -35,17 +39,38 @@ out of the list), every module's channel id shifts, and the saved
 `Labels` / `RGBProfiles` / `RGBOverride` / `RGBPerLed` silently apply to a
 different physical DIMM.
 
-The Corsair loop keys by slot position and is stable; the ENE path is not.
+The Corsair loop keys by slot position and is stable; the ENE path was not.
 
-**Trigger:** a 4-DIMM system where one stick is reseated or detected late.
+**Fix:** the channel id is now derived from the module's fixed position in
+the `eneRamAddresses` pool rather than its position in the detection result,
+so removing/reseating one DIMM no longer shifts the others' ids:
 
-**Suggested hardening:** derive ENE channel ids from a stable property
-(e.g. the controller's SMBus address) instead of a running detection
-counter.
+- `src/devices/memory/memory.go:836-837`
+- `src/devices/memory/ene.go:148,169` (`eneModule.Index`, set during the
+  pool scan in `detectEneModules`)
+
+```go
+for _, em := range detectEneModules(d.dev.File) {
+    i := maximumRegisters + em.Index
+```
+
+`eneRamAddresses` is also now documented as order-load-bearing (append-only
+`src/devices/memory/ene.go:54`), so a future edit that reorders the pool
+can't silently remap persisted settings. For a fully-populated system the
+new address-derived ids equal the old detection-order ids, so existing
+profiles remain valid with no migration.
 
 ---
 
 ## 2. Low-Medium — Self-test probes an unvalidated SMBus address pool
+
+**Status: OPEN** — no code change; the suggested hardening comment has not
+been added. Detection rests on the `0xA0`-`0xAF` echo signature alone; a
+non-ENE device on the extended pool could be misdetected as DRAM. The
+`ORDER IS LOAD-BEARING` comment added to `eneRamAddresses` in the fix does
+not cover this — consider a follow-up noting the extended addresses
+(`0x4F`, `0x66`-`0x67`, `0x39`-`0x3D`) are unvalidated against real
+hardware.
 
 `eneSelfTest` scans 15 addresses including `0x39`-`0x3D`, `0x4F`, and
 `0x66`-`0x67`, which on many boards are populated by non-ENE SMBus
@@ -73,6 +98,8 @@ hardware.
 
 ## 3. Low — `Stop()` leaves ENE modules on the internal rainbow while Corsair modules are left black
 
+**Status: ACCEPTED** — intentional, documented behavior; no change planned.
+
 - `src/devices/memory/memory.go:326-342`
 
 ENE modules are released to host-off, returning them to their boot rainbow,
@@ -84,6 +111,9 @@ Corsair + ENE modules.
 ---
 
 ## 4. Low — `eneReadString` terminates only on NUL
+
+**Status: OPEN** — informational; not observed on validated hardware and
+OpenRGB shares the limitation.
 
 - `src/devices/memory/ene.go:123-127`
 
@@ -100,6 +130,9 @@ limitation. Informational.
 
 ## 5. Low — `getSpdHwmonTemperatureFile` returns the first `temp*_input` from the glob
 
+**Status: OPEN** — no code change; harmless if `temp1` is always the DIMM
+temp.
+
 - `src/devices/memory/memory.go:367-373`
 
 If the `spd5118` driver exposes more than one temp input, the
@@ -111,5 +144,7 @@ but there is no verification.
 
 ## Summary
 
-Only finding #1 has a real user-visible impact; the rest are
-hardening/consistency notes.
+Finding #1 (the only one with real user-visible impact) is fixed and
+cleanup-reviewed on `bugfix/ene-memory-support-fixes-cr1`. #3 was accepted
+as intentional. #2, #4, and #5 remain open as hardening/consistency notes
+with no user-visible impact on the validated hardware.
