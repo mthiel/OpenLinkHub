@@ -99,7 +99,7 @@ hardware.
 **Status: RESOLVED** — ENE modules are now latched black on `Stop()`,
 matching the Corsair path.
 
-- `src/devices/memory/memory.go:328-343`
+- `src/devices/memory/memory.go:328-340`
 
 The original code released ENE modules to host-off, returning them to their
 boot rainbow, whereas Corsair modules were explicitly driven black — an
@@ -109,7 +109,7 @@ to users with mixed Corsair + ENE modules.
 **Fix:** `Stop()` now keeps host control and pushes an all-black frame via
 `writeDeviceColor` (dispatching to `transferEne`) instead of releasing.
 `eneSetDirect` no longer takes an `enabled` parameter — it always takes host
-control, its former release path being dead code.
+control, since the former release path was removed as part of this change.
 
 ---
 

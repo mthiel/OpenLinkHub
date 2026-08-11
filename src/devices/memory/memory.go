@@ -331,19 +331,13 @@ func (d *Device) Stop() {
 				// lighting back to the module's internal effect engine
 				// (the on-board default rainbow) instead.
 				d.eneSetDirect(d.Devices[k].EneAddress)
-				static := map[int][]byte{}
-				for i := 0; i < int(d.Devices[k].LedChannels); i++ {
-					static[i] = []byte{0, 0, 0}
-				}
-				d.writeDeviceColor(k, rgb.SetColor(static))
-				continue
 			}
 			static := map[int][]byte{}
 			for i := 0; i < int(d.Devices[k].LedChannels); i++ {
 				static[i] = []byte{0, 0, 0}
 			}
-			buffer := rgb.SetColor(static)
-			d.transfer(buffer, colorAddresses[k], d.Devices[k].LedChannels, d.Devices[k].ColorRegister)
+			d.writeDeviceColor(k, rgb.SetColor(static))
+			time.Sleep(5 * time.Millisecond)
 		}
 	}
 
