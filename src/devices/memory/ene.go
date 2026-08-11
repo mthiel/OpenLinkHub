@@ -57,6 +57,12 @@ var eneVersionDirectRegister = map[string]uint16{
 // keyed by those ids. Reordering, inserting into the middle of, or removing
 // an entry remaps every existing user's saved settings onto the wrong
 // physical DIMM. Append new addresses at the end only.
+//
+// The addresses beyond 0x70-0x76 (0x4F, 0x66-0x67, 0x39-0x3D) are unvalidated
+// against real hardware: on many boards those ranges hold non-ENE SMBus
+// peripherals (PMIC/RCD/SPD), and detection relies solely on the 0xA0-0xAF
+// echo signature. They match OpenRGB's own pool and pass there, but no
+// ENE module has been confirmed on them.
 var eneRamAddresses = []byte{0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x4F, 0x66, 0x67, 0x39, 0x3A, 0x3B, 0x3C, 0x3D}
 
 // eneToSpdAddressOffset is the offset between an ENE DRAM RGB controller's

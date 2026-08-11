@@ -64,13 +64,11 @@ profiles remain valid with no migration.
 
 ## 2. Low-Medium — Self-test probes an unvalidated SMBus address pool
 
-**Status: OPEN** — no code change; the suggested hardening comment has not
-been added. Detection rests on the `0xA0`-`0xAF` echo signature alone; a
-non-ENE device on the extended pool could be misdetected as DRAM. The
-`ORDER IS LOAD-BEARING` comment added to `eneRamAddresses` in the fix does
-not cover this — consider a follow-up noting the extended addresses
+**Status: RESOLVED** — the hardening comment was added to `eneRamAddresses`
+(`src/devices/memory/ene.go:54`), documenting that the extended addresses
 (`0x4F`, `0x66`-`0x67`, `0x39`-`0x3D`) are unvalidated against real
-hardware.
+hardware and that detection rests on the `0xA0`-`0xAF` echo signature
+alone. No behavior change.
 
 `eneSelfTest` scans 15 addresses including `0x39`-`0x3D`, `0x4F`, and
 `0x66`-`0x67`, which on many boards are populated by non-ENE SMBus
@@ -146,5 +144,6 @@ but there is no verification.
 
 Finding #1 (the only one with real user-visible impact) is fixed and
 cleanup-reviewed on `bugfix/ene-memory-support-fixes-cr1`. #3 was accepted
-as intentional. #2, #4, and #5 remain open as hardening/consistency notes
-with no user-visible impact on the validated hardware.
+as intentional. #2 is fixed with the hardening comment. #4 and #5 remain
+open as informational notes with no user-visible impact on the validated
+hardware.
