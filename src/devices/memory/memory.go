@@ -834,7 +834,7 @@ func (d *Device) getDevices() int {
 	// persisted Labels/RGBProfiles/RGBOverride/RGBPerLed) of the others.
 	if d.RuntimeMemoryType == 5 {
 		for _, em := range detectEneModules(d.dev.File) {
-			i := maximumRegisters + slices.Index(eneRamAddresses, em.Address)
+			i := maximumRegisters + em.Index
 
 			label := "Set Label"
 			if d.DeviceProfile != nil {

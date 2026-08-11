@@ -51,6 +51,12 @@ var eneVersionDirectRegister = map[string]uint16{
 // remap to a free slot" negotiation some platforms require before modules
 // are individually addressable has not been exercised against real
 // hardware and is intentionally not implemented here.
+//
+// ORDER IS LOAD-BEARING. Channel ids are derived from a module's position
+// in this pool, and persisted Labels/RGBProfiles/RGBOverride/RGBPerLed are
+// keyed by those ids. Reordering, inserting into the middle of, or removing
+// an entry remaps every existing user's saved settings onto the wrong
+// physical DIMM. Append new addresses at the end only.
 var eneRamAddresses = []byte{0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x4F, 0x66, 0x67, 0x39, 0x3A, 0x3B, 0x3C, 0x3D}
 
 // eneToSpdAddressOffset is the offset between an ENE DRAM RGB controller's
@@ -63,6 +69,7 @@ var eneRamAddresses = []byte{0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x4F, 0x6
 const eneToSpdAddressOffset = 0x20
 
 type eneModule struct {
+	Index     int
 	Address   byte
 	LedCount  int
 	DirectReg uint16
@@ -138,7 +145,7 @@ func eneReadString(f *os.File, addr byte, base uint16, length int) string {
 func detectEneModules(f *os.File) []eneModule {
 	var modules []eneModule
 
-	for _, addr := range eneRamAddresses {
+	for idx, addr := range eneRamAddresses {
 		if !eneSelfTest(f, addr) {
 			continue
 		}
@@ -159,6 +166,7 @@ func detectEneModules(f *os.File) []eneModule {
 		}
 
 		modules = append(modules, eneModule{
+			Index:     idx,
 			Address:   addr,
 			LedCount:  int(ledCount),
 			DirectReg: directReg,
