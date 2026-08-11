@@ -827,10 +827,14 @@ func (d *Device) getDevices() int {
 	// range (0..maximumRegisters-1) rather than len(devices), since the
 	// Corsair loop above indexes by physical slot position and can be
 	// sparse -- len(devices) would collide with an already-used key if
-	// only the higher-numbered Corsair slots were populated.
+	// only the higher-numbered Corsair slots were populated. ENE channel
+	// ids are derived from the module's fixed position in the address
+	// pool rather than its position in the detection result, so removing
+	// or reseating one DIMM doesn't shift the channel ids (and thus the
+	// persisted Labels/RGBProfiles/RGBOverride/RGBPerLed) of the others.
 	if d.RuntimeMemoryType == 5 {
-		for eneIndex, em := range detectEneModules(d.dev.File) {
-			i := maximumRegisters + eneIndex
+		for _, em := range detectEneModules(d.dev.File) {
+			i := maximumRegisters + slices.Index(eneRamAddresses, em.Address)
 
 			label := "Set Label"
 			if d.DeviceProfile != nil {
